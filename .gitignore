@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+
+# VS Code
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.userprefs
+
+# Test results
+TestResults/
+
+# Publish output
+publish/
+
+# OS files
+Thumbs.db
+.DS_Store

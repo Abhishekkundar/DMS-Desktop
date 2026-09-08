@@ -1,0 +1,13 @@
+<Application x:Class="DMS.Desktop.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <SolidColorBrush x:Key="GovBlue" Color="#315D7C"/>
+        <SolidColorBrush x:Key="GovBlueDark" Color="#274F6B"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#AEBBC5"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="HeaderBrush" Color="#E9EEF2"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#263746"/>
+    </Application.Resources>
+</Application>
