@@ -1,12 +1,18 @@
 using System.Windows;
+using DMS.Desktop.Data;
 
 namespace DMS.Desktop;
 
 public partial class LoginWindow : Window
 {
+    private readonly UserStore _userStore;
+
     public LoginWindow()
     {
         InitializeComponent();
+
+        _userStore = new UserStore();
+
         PasswordBox.Password = "password";
     }
 
@@ -15,18 +21,37 @@ public partial class LoginWindow : Window
         var userId = UserIdBox.Text.Trim();
         var password = PasswordBox.Password;
 
-        // V1 UI login only. Authentication/database will be connected later.
-        if (userId == "admin" && password == "password")
+        ErrorText.Text = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            var app = (App)Application.Current;
-            app.OpenMainWindow();
-            Close();
+            ErrorText.Text = "Please enter User ID.";
+            UserIdBox.Focus();
+            return;
         }
-        else
+
+        if (string.IsNullOrEmpty(password))
+        {
+            ErrorText.Text = "Please enter Password.";
+            PasswordBox.Focus();
+            return;
+        }
+
+        var user = _userStore.Authenticate(userId, password);
+
+        if (user is null)
         {
             ErrorText.Text = "Invalid User ID or Password.";
+            PasswordBox.SelectAll();
             PasswordBox.Focus();
+            return;
         }
+
+        var app = (App)Application.Current;
+
+        app.OpenMainWindow();
+
+        Close();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)

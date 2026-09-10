@@ -155,7 +155,7 @@
                                     <CheckBox x:Name="PermissionDelete" Content="Delete" Margin="5"/>
                                 </UniformGrid></GroupBox>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource PrimaryButton}" Content="Create" Width="90" Click="CreateUserSave_Click"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="Create" Width="90" Click="SaveUser_Click"/>
                                     <Button Content="Clear" Width="90" Click="CreateUserClear_Click"/>
                                 </StackPanel>
                             </StackPanel></ScrollViewer>
