@@ -1,6 +1,7 @@
 using System.Windows;
-
+using DMS.Desktop.Data;
 namespace DMS.Desktop;
+
 
 public partial class App : Application
 {
@@ -12,10 +13,12 @@ public partial class App : Application
         login.Show();
     }
 
-    public void OpenMainWindow()
+    public void OpenMainWindow(UserRecord user)
     {
-        var main = new MainWindow();
-        MainWindow = main;
-        main.Show();
+        var mainWindow = new MainWindow(user);
+
+        MainWindow = mainWindow;
+
+        mainWindow.Show();
     }
 }

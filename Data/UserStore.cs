@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace DMS.Desktop.Data;
@@ -56,16 +57,10 @@ public sealed class UserStore
         }
         catch (JsonException)
         {
-            MessageBoxHelper.ShowError(
-                "The users data file contains invalid data.");
-
             return new List<UserRecord>();
         }
         catch (IOException)
         {
-            MessageBoxHelper.ShowError(
-                "The users data file could not be accessed.");
-
             return new List<UserRecord>();
         }
     }
@@ -183,12 +178,41 @@ public sealed class UserStore
 
     private void EnsureUsersFile()
     {
+            List<UserRecord> users;
         if (File.Exists(_usersFile))
+    {
+        try
         {
-            return;
-        }
+            var json = File.ReadAllText(_usersFile);
 
-        var admin = new UserRecord
+            users = string.IsNullOrWhiteSpace(json)
+                ? new List<UserRecord>()
+                : JsonSerializer.Deserialize<List<UserRecord>>(
+                    json,
+                    JsonOptions) ?? new List<UserRecord>();
+        }
+        catch (JsonException)
+        {
+            users = new List<UserRecord>();
+        }
+        catch (IOException)
+        {
+            users = new List<UserRecord>();
+        }
+    }
+    else
+    {
+        users = new List<UserRecord>();
+    }
+     var admin = users.FirstOrDefault(user =>
+        string.Equals(
+            user.UserId,
+            DefaultAdminUserId,
+            StringComparison.OrdinalIgnoreCase));
+
+    if (admin is null)
+    {
+        admin = new UserRecord
         {
             UserId = DefaultAdminUserId,
             Password = DefaultAdminPassword,
@@ -210,34 +234,49 @@ public sealed class UserStore
             IsActive = true
         };
 
-        SaveUsers(
-            new List<UserRecord>
-            {
-                admin
-            });
+        users.Add(admin);
     }
-
-    private void SaveUsers(
-        List<UserRecord> users)
+    else
     {
-        var json = JsonSerializer.Serialize(
-            users,
-            JsonOptions);
+        // Repair / normalize the existing administrator account.
+        admin.Role = "Administrator";
 
-        File.WriteAllText(
-            _usersFile,
-            json);
+        if (string.IsNullOrWhiteSpace(admin.FullName))
+        {
+            admin.FullName = "System Administrator";
+        }
+
+        if (string.IsNullOrWhiteSpace(admin.EmployeeId))
+        {
+            admin.EmployeeId = "ADMIN";
+        }
+
+        admin.CanCreateUser = true;
+        admin.CanDeleteUser = true;
+        admin.CanSearch = true;
+        admin.CanIndex = true;
+        admin.CanUpload = true;
+        admin.CanExcel = true;
+        admin.CanEdit = true;
+        admin.CanDeleteDocument = true;
+        admin.CanReply = true;
+        admin.CanPrint = true;
+        admin.IsActive = true;
     }
+
+    SaveUsers(users);
 }
 
-internal static class MessageBoxHelper
-{
-    public static void ShowError(string message)
+// save user class
+private void SaveUsers(List<UserRecord> users)
     {
-        System.Windows.MessageBox.Show(
-            message,
-            "DMS Data Error",
-            System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Error);
+    var json = JsonSerializer.Serialize(
+        users,
+        JsonOptions);
+
+    File.WriteAllText(
+        _usersFile,
+        json,
+        Encoding.UTF8);
     }
 }

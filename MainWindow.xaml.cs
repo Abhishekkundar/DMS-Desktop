@@ -11,6 +11,8 @@ namespace DMS.Desktop;
 
 public partial class MainWindow : Window
 {
+    private readonly UserRecord _currentUser;
+
     private readonly string _dataFolder;
     private readonly string _documentsFolder;
     private readonly string _documentsFile;
@@ -24,7 +26,6 @@ public partial class MainWindow : Window
     private string? _selectedIndexFile;
     private string? _selectedUploadFile;
     private string? _selectedReplyAttachment;
-
     private DocumentRecord? _selectedDocument;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -33,8 +34,12 @@ public partial class MainWindow : Window
         PropertyNameCaseInsensitive = true
     };
 
-    public MainWindow()
+    public MainWindow(UserRecord currentUser)
     {
+        ArgumentNullException.ThrowIfNull(currentUser);
+
+        _currentUser = currentUser;
+
         InitializeComponent();
 
         _dataFolder = Path.Combine(
@@ -54,12 +59,13 @@ public partial class MainWindow : Window
             _dataFolder,
             "replies.json");
 
+        _userStore = new UserStore();
+
         Directory.CreateDirectory(_dataFolder);
         Directory.CreateDirectory(_documentsFolder);
 
-        _userStore = new UserStore();
-
         LoadData();
+        ApplyPermissions();
         RefreshAll();
     }
 
@@ -138,6 +144,9 @@ public partial class MainWindow : Window
 
     private void RefreshAll()
     {
+        ApplyPermissions();
+
+        CurrentUserText.Text =$"{_currentUser.FullName} ({_currentUser.UserId})";
         DocumentsGrid.ItemsSource = null;
         DocumentsGrid.ItemsSource = _documents.ToList();
 
@@ -154,7 +163,28 @@ public partial class MainWindow : Window
             .ToList();
 
         StatusText.Text =
-            $"DMS  |  Administrator: admin  |  {_documents.Count} document(s) | Ready";
+    $"DMS  |  User: {_currentUser.FullName} ({_currentUser.UserId}) | " +
+    $"{_documents.Count} document(s) | Ready";
+    }
+
+    #endregion
+
+    #region Permissions
+
+    private bool RequirePermission(bool allowed, string operation)
+    {
+        if (allowed)
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            $"You do not have permission to {operation}.",
+            "Access Denied",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+
+        return false;
     }
 
     #endregion
@@ -184,6 +214,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanCreateUser, "create users"))
+        {
+            return;
+        }
+
         ShowOnly(
             CreateUserPanel,
             "Create Account");
@@ -193,6 +228,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanDeleteUser, "delete users"))
+        {
+            return;
+        }
+
         RefreshAll();
 
         ShowOnly(
@@ -204,6 +244,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanSearch, "search documents"))
+        {
+            return;
+        }
+
         ShowOnly(
             SearchPanel,
             "Search");
@@ -215,6 +260,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanIndex, "index documents"))
+        {
+            return;
+        }
+
         ShowOnly(
             IndexPanel,
             "Document Index");
@@ -224,6 +274,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanUpload, "upload documents"))
+        {
+            return;
+        }
+
         ShowOnly(
             UploadPanel,
             "Upload Document");
@@ -233,6 +288,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanExcel, "generate Excel reports"))
+        {
+            return;
+        }
+
         ShowOnly(
             ExcelPanel,
             "Excel Report");
@@ -246,6 +306,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanCreateUser, "create users"))
+        {
+            return;
+        }
+
         var name = UserNameBox.Text.Trim();
         var employeeId = EmployeeIdBox.Text.Trim();
         var userId = UserIdBox.Text.Trim();
@@ -330,9 +395,11 @@ public partial class MainWindow : Window
             CanDeleteDocument =
                 PermissionDelete.IsChecked == true,
 
-            CanReply = true,
+            CanReply =
+                PermissionReply.IsChecked == true,
 
-            CanPrint = true,
+            CanPrint =
+                PermissionPrint.IsChecked == true,
 
             IsActive = true
         };
@@ -378,12 +445,18 @@ public partial class MainWindow : Window
         PermissionExcel.IsChecked = false;
         PermissionEdit.IsChecked = false;
         PermissionDelete.IsChecked = false;
+        PermissionReply.IsChecked = false;
+        PermissionPrint.IsChecked = false;
     }
 
     private void DeleteUserConfirm_Click(
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanDeleteUser, "delete users"))
+        {
+            return;
+        }
         var userId =
             DeleteUserCombo.SelectedItem?.ToString();
 
@@ -460,6 +533,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanSearch, "search documents"))
+        {
+            return;
+        }
+
         ApplySearch();
     }
 
@@ -595,6 +673,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanIndex, "index documents"))
+        {
+            return;
+        }
         var path = ChooseDocumentFile();
 
         if (path is null)
@@ -610,6 +692,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanIndex, "index documents"))
+        {
+            return;
+        }
         var documentNo =
             IndexDocumentNoBox.Text.Trim();
 
@@ -737,6 +823,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanUpload, "upload documents"))
+        {
+            return;
+        }
         var path = ChooseDocumentFile();
 
         if (path is null)
@@ -752,6 +842,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanUpload, "upload documents"))
+        {
+            return;
+        }
         var documentNo =
             UploadDocumentNoBox.Text.Trim();
 
@@ -939,6 +1033,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanSearch, "view documents"))
+        {
+            return;
+        }
         if (sender is Button button &&
             button.DataContext is DocumentRecord document)
         {
@@ -990,6 +1088,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanEdit, "edit documents"))
+        {
+            return;
+        }
         if (_selectedDocument is null)
         {
             MessageBox.Show(
@@ -1031,6 +1133,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanEdit, "edit documents"))
+        {
+            return;
+        }
         if (_selectedDocument is null)
         {
             return;
@@ -1141,6 +1247,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanDeleteDocument, "delete documents"))
+        {
+            return;
+        }
         if (_selectedDocument is null)
         {
             MessageBox.Show(
@@ -1220,6 +1330,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanReply, "reply to documents"))
+        {
+            return;
+        }
         if (sender is not Button button ||
             button.DataContext is not DocumentRecord document)
         {
@@ -1255,6 +1369,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanReply, "attach reply files"))
+        {
+            return;
+        }
         var path = ChooseDocumentFile();
 
         if (path is null)
@@ -1284,6 +1402,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanReply, "save replies"))
+        {
+            return;
+        }
         var to =
             ReplyToBox.Text.Trim();
 
@@ -1399,6 +1521,11 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanPrint, "print replies"))
+        {
+            return;
+        }
+
         PrintReply();
     }
 
@@ -1410,6 +1537,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanPrint, "print documents"))
+        {
+            return;
+        }
         if (sender is not Button button ||
             button.DataContext is not DocumentRecord document)
         {
@@ -1478,6 +1609,10 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (!RequirePermission(_currentUser.CanExcel, "generate Excel reports"))
+        {
+            return;
+        }
         var fileName =
             string.IsNullOrWhiteSpace(
                 ExcelFileNameBox.Text)
@@ -1572,29 +1707,74 @@ public partial class MainWindow : Window
 
     #region Language
 
-    private void LanguageCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (!IsLoaded ||
-            LanguageCombo.SelectedIndex < 0)
-        {
-            return;
-        }
+// language combo
+    // private void LanguageCombo_SelectionChanged(
+    //     object sender,
+    //     SelectionChangedEventArgs e)
+    // {
+    //     if (!IsLoaded ||
+    //         LanguageCombo.SelectedIndex < 0)
+    //     {
+    //         return;
+    //     }
 
-        if (LanguageCombo.SelectedIndex == 1)
-        {
-            MessageBox.Show(
-                "Kannada UI translation will be expanded in the localization phase.",
-                "DMS",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-    }
+    //     if (LanguageCombo.SelectedIndex == 1)
+    //     {
+    //         MessageBox.Show(
+    //             "Kannada UI translation will be expanded in the localization phase.",
+    //             "DMS",
+    //             MessageBoxButton.OK,
+    //             MessageBoxImage.Information);
+    //     }
+    // }
 
     #endregion
 
     #region Logout
+    private void ApplyPermissions()
+{
+    CreateUserButton.Visibility =
+        _currentUser.CanCreateUser
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    DeleteUserButton.Visibility =
+        _currentUser.CanDeleteUser
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    SearchButton.Visibility =
+        _currentUser.CanSearch
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    IndexButton.Visibility =
+        _currentUser.CanIndex
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    UploadButton.Visibility =
+        _currentUser.CanUpload
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    ExcelButton.Visibility =
+        _currentUser.CanExcel
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    DeleteButton.Visibility =
+        _currentUser.CanDeleteDocument
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    EditButton.Visibility =
+        _currentUser.CanEdit
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    LogoutButton.Visibility = Visibility.Visible;
+}
 
     private void Logout_Click(
         object sender,

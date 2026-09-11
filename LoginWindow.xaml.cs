@@ -49,7 +49,7 @@ public partial class LoginWindow : Window
 
         var app = (App)Application.Current;
 
-        app.OpenMainWindow();
+        app.OpenMainWindow(user);
 
         Close();
     }
