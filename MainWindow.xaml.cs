@@ -15,6 +15,7 @@ public partial class MainWindow : Window
 
     private readonly string _dataFolder;
     private readonly string _documentsFolder;
+    private readonly string _uploadedFolder;
     private readonly string _documentsFile;
     private readonly string _repliesFile;
 
@@ -51,6 +52,10 @@ public partial class MainWindow : Window
             _dataFolder,
             "Documents");
 
+        _uploadedFolder = Path.Combine(
+            _dataFolder,
+            "UploadedDocuments");
+
         _documentsFile = Path.Combine(
             _dataFolder,
             "documents.json");
@@ -63,6 +68,7 @@ public partial class MainWindow : Window
 
         Directory.CreateDirectory(_dataFolder);
         Directory.CreateDirectory(_documentsFolder);
+        Directory.CreateDirectory(_uploadedFolder);
 
         LoadData();
         ApplyPermissions();
@@ -667,25 +673,42 @@ public partial class MainWindow : Window
 
     #endregion
 
+    // ===== NEW / UPDATED CODE: Upload-first document workflow =====
+    // Indexing now selects only files already uploaded to DMS.
     #region Document Index
 
-    private void IndexChooseFile_Click(
-        object sender,
-        RoutedEventArgs e)
+    private void RefreshUploadedFiles()
     {
-        if (!RequirePermission(_currentUser.CanIndex, "index documents"))
-        {
-            return;
-        }
-        var path = ChooseDocumentFile();
+        IndexUploadedFileCombo.ItemsSource = null;
 
-        if (path is null)
+        if (!Directory.Exists(_uploadedFolder))
         {
             return;
         }
 
-        _selectedIndexFile = path;
-        IndexFileBox.Text = path;
+        var files = Directory
+            .GetFiles(_uploadedFolder)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.CreationTime)
+            .ToList();
+
+        IndexUploadedFileCombo.ItemsSource = files;
+        IndexUploadedFileCombo.DisplayMemberPath = nameof(FileInfo.Name);
+    }
+
+    private void IndexUploadedFile_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (IndexUploadedFileCombo.SelectedItem is not FileInfo file)
+        {
+            _selectedIndexFile = null;
+            IndexFileBox.Clear();
+            return;
+        }
+
+        _selectedIndexFile = file.FullName;
+        IndexFileBox.Text = file.Name;
     }
 
     private void IndexSave_Click(
@@ -696,6 +719,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+
         var documentNo =
             IndexDocumentNoBox.Text.Trim();
 
@@ -734,6 +758,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(_selectedIndexFile) ||
+            !File.Exists(_selectedIndexFile))
+        {
+            MessageBox.Show(
+                "Select an uploaded document to index.",
+                "DMS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+
+            return;
+        }
+
         if (_documents.Any(document =>
                 string.Equals(
                     document.DocumentNo,
@@ -755,46 +791,53 @@ public partial class MainWindow : Window
                 : _documents.Max(
                     document => document.SlNo) + 1;
 
-        var record = new DocumentRecord(
-            nextSlNo,
-            documentNo,
-            projectCode,
-            unit,
-            year,
-            month,
-            voucher,
-            description,
-            string.Empty,
-            DateTime.Now);
-
-        if (!string.IsNullOrWhiteSpace(
-                _selectedIndexFile))
+        try
         {
-            record = record with
-            {
-                FilePath = CopyDocument(
-                    _selectedIndexFile,
-                    documentNo)
-            };
+            var storedPath = CopyDocument(
+                _selectedIndexFile,
+                documentNo);
+
+            var record = new DocumentRecord(
+                nextSlNo,
+                documentNo,
+                projectCode,
+                unit,
+                year,
+                month,
+                voucher,
+                description,
+                storedPath,
+                DateTime.Now);
+
+            _documents.Add(record);
+
+            SaveJson(
+                _documentsFile,
+                _documents);
+
+            File.Delete(_selectedIndexFile);
+
+            IndexClear_Click(
+                sender,
+                e);
+
+            RefreshUploadedFiles();
+            RefreshAll();
+
+            MessageBox.Show(
+                $"Document {documentNo} indexed successfully.",
+                "DMS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
-
-        _documents.Add(record);
-
-        SaveJson(
-            _documentsFile,
-            _documents);
-
-        RefreshAll();
-
-        IndexClear_Click(
-            sender,
-            e);
-
-        MessageBox.Show(
-            $"Document {documentNo} indexed successfully.",
-            "DMS",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        catch (IOException ex)
+        {
+            MessageBox.Show(
+                $"Unable to index the uploaded document.\n\n{ex.Message}",
+                "DMS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void IndexClear_Click(
@@ -809,6 +852,7 @@ public partial class MainWindow : Window
         IndexYearCombo.SelectedIndex = -1;
         IndexMonthCombo.SelectedIndex = -1;
         IndexVoucherCombo.SelectedIndex = -1;
+        IndexUploadedFileCombo.SelectedIndex = -1;
 
         IndexFileBox.Clear();
 
@@ -817,6 +861,9 @@ public partial class MainWindow : Window
 
     #endregion
 
+
+    // ===== NEW / UPDATED CODE: Upload-first document workflow =====
+    // Uploading stores the file in UploadedDocuments before indexing.
     #region Document Upload
 
     private void UploadChooseFile_Click(
@@ -827,6 +874,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+
         var path = ChooseDocumentFile();
 
         if (path is null)
@@ -846,43 +894,11 @@ public partial class MainWindow : Window
         {
             return;
         }
-        var documentNo =
-            UploadDocumentNoBox.Text.Trim();
 
-        if (string.IsNullOrWhiteSpace(documentNo))
+        if (string.IsNullOrWhiteSpace(_selectedUploadFile))
         {
             MessageBox.Show(
-                "Enter the Document No.",
-                "DMS",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-
-            return;
-        }
-
-        var document =
-            _documents.FirstOrDefault(existingDocument =>
-                string.Equals(
-                    existingDocument.DocumentNo,
-                    documentNo,
-                    StringComparison.OrdinalIgnoreCase));
-
-        if (document is null)
-        {
-            MessageBox.Show(
-                "Document No. is not indexed. Index the document first.",
-                "DMS",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(
-                _selectedUploadFile))
-        {
-            MessageBox.Show(
-                "Choose a file to upload.",
+                "Choose a document to upload.",
                 "DMS",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -892,47 +908,20 @@ public partial class MainWindow : Window
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(
-                    document.FilePath) &&
-                File.Exists(document.FilePath))
-            {
-                File.Delete(document.FilePath);
-            }
+            var uploadedPath = CopyToUploadedDocuments(
+                _selectedUploadFile);
 
-            var newPath = CopyDocument(
-                _selectedUploadFile,
-                documentNo);
-
-            var index =
-                _documents.FindIndex(existingDocument =>
-                    string.Equals(
-                        existingDocument.DocumentNo,
-                        document.DocumentNo,
-                        StringComparison.OrdinalIgnoreCase));
-
-            if (index < 0)
-            {
-                return;
-            }
-
-            _documents[index] =
-                document with
-                {
-                    FilePath = newPath
-                };
-
-            SaveJson(
-                _documentsFile,
-                _documents);
+            var fileName = Path.GetFileName(uploadedPath);
 
             UploadClear_Click(
                 sender,
                 e);
 
+            RefreshUploadedFiles();
             RefreshAll();
 
             MessageBox.Show(
-                "Document uploaded successfully.",
+                $"Document uploaded successfully.\n\nFile: {fileName}\n\nThe document is now available in Document Index for metadata entry.",
                 "DMS",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -940,7 +929,7 @@ public partial class MainWindow : Window
         catch (IOException ex)
         {
             MessageBox.Show(
-                $"Unable to store the document.\n\n{ex.Message}",
+                $"Unable to upload the document.\n\n{ex.Message}",
                 "DMS",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -951,10 +940,55 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        UploadDocumentNoBox.Clear();
         UploadFileBox.Clear();
-
         _selectedUploadFile = null;
+    }
+
+    private string CopyToUploadedDocuments(
+        string source)
+    {
+        if (!File.Exists(source))
+        {
+            throw new FileNotFoundException(
+                "The selected document could not be found.",
+                source);
+        }
+
+        Directory.CreateDirectory(_uploadedFolder);
+
+        var originalName =
+            Path.GetFileName(source);
+
+        var extension =
+            Path.GetExtension(originalName);
+
+        var baseName =
+            Path.GetFileNameWithoutExtension(originalName);
+
+        var safeBaseName =
+            SanitizeFileName(baseName);
+
+        var destination =
+            Path.Combine(
+                _uploadedFolder,
+                safeBaseName + extension);
+
+        var counter = 1;
+
+        while (File.Exists(destination))
+        {
+            destination = Path.Combine(
+                _uploadedFolder,
+                $"{safeBaseName} ({counter}){extension}");
+
+            counter++;
+        }
+
+        File.Copy(
+            source,
+            destination);
+
+        return destination;
     }
 
     private string CopyDocument(
@@ -1007,11 +1041,12 @@ public partial class MainWindow : Window
         return builder.ToString();
     }
 
+    // ===== UPDATED: Used only by Upload. Index no longer opens a local file dialog. =====
     private static string? ChooseDocumentFile()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Select Document",
+            Title = "Select Document to Upload",
             Filter =
                 "Documents|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.doc;*.docx;*.xls;*.xlsx|" +
                 "All Files|*.*",
@@ -1026,6 +1061,7 @@ public partial class MainWindow : Window
     }
 
     #endregion
+
 
     #region Document View
 
@@ -1708,25 +1744,25 @@ public partial class MainWindow : Window
     #region Language
 
 // language combo
-    // private void LanguageCombo_SelectionChanged(
-    //     object sender,
-    //     SelectionChangedEventArgs e)
-    // {
-    //     if (!IsLoaded ||
-    //         LanguageCombo.SelectedIndex < 0)
-    //     {
-    //         return;
-    //     }
+    private void LanguageCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded ||
+            LanguageCombo.SelectedIndex < 0)
+        {
+            return;
+        }
 
-    //     if (LanguageCombo.SelectedIndex == 1)
-    //     {
-    //         MessageBox.Show(
-    //             "Kannada UI translation will be expanded in the localization phase.",
-    //             "DMS",
-    //             MessageBoxButton.OK,
-    //             MessageBoxImage.Information);
-    //     }
-    // }
+        if (LanguageCombo.SelectedIndex == 1)
+        {
+            MessageBox.Show(
+                "Kannada UI translation will be expanded in the localization phase.",
+                "DMS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
 
     #endregion
 

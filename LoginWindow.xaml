@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DMS - Login"
         Width="520"
-        Height="640"
+        Height="800"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="#F3F5F7"
